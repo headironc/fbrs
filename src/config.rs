@@ -1,15 +1,41 @@
 use clap::Parser;
 use dotenv::{from_filename, var};
-use std::{
-    path::{Path, PathBuf},
-    process::exit,
+use globset::{Glob, GlobSet, GlobSetBuilder};
+use once_cell::sync::Lazy;
+use std::{path::PathBuf, process::exit};
+use tokio::{
+    fs::create_dir_all,
+    sync::{Mutex, OnceCell},
 };
-use tokio::fs::create_dir_all;
 use tracing::{error, info};
 
+static CONFIG: Lazy<Mutex<OnceCell<Config>>> = Lazy::new(|| Mutex::new(OnceCell::new()));
+
+/// Get the initialized config or initialize it from the config file
+pub async fn get_or_init_config() -> Config {
+    let guard = CONFIG.lock().await;
+
+    match guard.get() {
+        Some(config) => config.clone(),
+        None => {
+            let config = Config::new().await;
+
+            if let Err(e) = guard.set(config.clone()) {
+                error!("Failed to set config: {}", e);
+
+                exit(1);
+            }
+
+            config
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
 pub struct Config {
     listen_path: PathBuf,
     processor_dir_path: PathBuf,
+    globset: GlobSet,
 }
 
 #[derive(Debug, Parser)]
@@ -21,7 +47,7 @@ struct Args {
 }
 
 impl Config {
-    pub async fn new() -> Self {
+    async fn new() -> Self {
         let args = Args::parse();
 
         // check if the specified path exists
@@ -32,7 +58,7 @@ impl Config {
         }
 
         // check if there is a file at the specified path
-        if !Path::is_file(&args.config) {
+        if !args.config.is_file() {
             error!("There is no config file at the specified path");
 
             exit(1);
@@ -49,11 +75,53 @@ impl Config {
         // get the processor dir path from the environment
         let processor_dir_path = get_path_from_env("PROCESSOR_DIR_PATH").await;
 
-        info!("Read config file successfully");
+        let whitelist = match var("WHITELIST") {
+            Ok(whitelist) => {
+                if whitelist.is_empty() {
+                    vec![]
+                } else {
+                    whitelist
+                        .split(',')
+                        .map(|s| s.into())
+                        .collect::<Vec<String>>()
+                }
+            }
+            Err(_) => {
+                info!("Did not find WHITELIST in config file, using blank whitelist");
+                vec![]
+            }
+        };
+
+        let mut builder = GlobSetBuilder::new();
+
+        for pattern in whitelist {
+            let glob = match Glob::new(&pattern) {
+                Ok(glob) => glob,
+                Err(_) => {
+                    error!("Failed to parse whitelist pattern: {}", pattern);
+
+                    exit(1);
+                }
+            };
+
+            builder.add(glob);
+
+            info!("Added whitelist pattern: {}", pattern);
+        }
+
+        let set = match builder.build() {
+            Ok(set) => set,
+            Err(_) => {
+                error!("Failed to build whitelist glob set");
+
+                exit(1);
+            }
+        };
 
         Self {
             listen_path,
             processor_dir_path,
+            globset: set,
         }
     }
 
@@ -63,6 +131,10 @@ impl Config {
 
     pub fn processor_dir_path(&self) -> &PathBuf {
         &self.processor_dir_path
+    }
+
+    pub fn globset(&self) -> &GlobSet {
+        &self.globset
     }
 }
 
