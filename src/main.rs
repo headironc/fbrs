@@ -1,9 +1,9 @@
-use notify::{RecursiveMode, Watcher};
-use notify_debouncer_full::new_debouncer;
-use std::{error::Error, path::Path, sync::mpsc::channel, time::Duration};
+use notify::{event::CreateKind, EventKind};
+use std::error::Error;
+use tracing::info;
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
-use fbr_service::Config;
+use fbr_service::{get_or_init_config, FileWatcher};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn Error>> {
@@ -12,35 +12,20 @@ async fn main() -> Result<(), Box<dyn Error>> {
         .with(fmt::layer())
         .init();
 
-    let _config = Config::new().await;
+    let config = get_or_init_config().await;
+
+    FileWatcher::new(
+        config.listen_path().clone(),
+        vec![EventKind::Create(CreateKind::File)],
+        config.globset().clone(),
+    )
+    .await
+    .debouncer(|events| async move {
+        info!("events: {:#?}", events);
+
+        Ok(())
+    })
+    .await?;
 
     Ok(())
-}
-
-pub fn test() -> Result<(), Box<dyn Error>> {
-    let (tx, rx) = channel();
-
-    let mut debouncer = new_debouncer(Duration::from_millis(1), None, tx)?;
-
-    debouncer.watcher().watch(
-        Path::new("/Users/headiron/Desktop"),
-        RecursiveMode::NonRecursive,
-    )?;
-
-    loop {
-        match rx.recv()? {
-            Ok(mut events) => {
-                // 过滤
-                events.retain(|event| {
-                    event.paths.iter().any(|path| {
-                        path.file_name()
-                            .map_or_else(|| true, |name| name != ".DS_Store")
-                    })
-                });
-
-                println!("{:#?}", events)
-            }
-            Err(e) => println!("watch error: {:?}", e),
-        }
-    }
 }
