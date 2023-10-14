@@ -1,31 +1,49 @@
 use notify::{event::CreateKind, EventKind};
-use std::error::Error;
-use tracing::info;
+use std::sync::mpsc::channel;
+use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
-use fbr_service::{get_or_init_config, FileWatcher};
+use fbr_service::{config, Error, FileEvents, FileWatcher};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Error> {
     registry()
         .with(EnvFilter::try_from_default_env().map_or("info".into(), |env| env))
         .with(fmt::layer())
         .init();
 
-    let config = get_or_init_config().await;
+    let config = config().await;
+    let listen_path = config.listen_path().to_owned();
+    let globset = config.globset().to_owned();
 
-    FileWatcher::new(
-        config.listen_path().clone(),
-        vec![EventKind::Create(CreateKind::File)],
-        config.globset().clone(),
-    )
-    .await
-    .debouncer(|events| async move {
-        info!("events: {:#?}", events);
+    let (tx, rx) = channel();
 
-        Ok(())
-    })
-    .await?;
+    let watch =
+        tokio::spawn(async move { FileWatcher::new(listen_path).await?.debouncer(tx).await });
+
+    let handle = tokio::spawn(async move {
+        loop {
+            match rx.recv() {
+                Ok(Ok(debounced_events)) => {
+                    let events = FileEvents::new(
+                        debounced_events,
+                        vec![EventKind::Create(CreateKind::Any)],
+                        globset.clone(),
+                    );
+
+                    info!("events: {:?}", events);
+                }
+                Ok(Err(errors)) => {
+                    error!("notify error: {:?}", errors);
+                }
+                Err(error) => {
+                    error!("mpsc recv error: {:?}", error);
+                }
+            }
+        }
+    });
+
+    let _ = tokio::join!(watch, handle);
 
     Ok(())
 }

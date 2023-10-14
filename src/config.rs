@@ -12,7 +12,7 @@ use tracing::{error, info};
 static CONFIG: Lazy<Mutex<OnceCell<Config>>> = Lazy::new(|| Mutex::new(OnceCell::new()));
 
 /// Get the initialized config or initialize it from the config file
-pub async fn get_or_init_config() -> Config {
+pub async fn config() -> Config {
     let guard = CONFIG.lock().await;
 
     match guard.get() {

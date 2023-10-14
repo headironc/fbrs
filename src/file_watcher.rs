@@ -1,69 +1,49 @@
 use globset::GlobSet;
-use notify::{EventKind, RecursiveMode, Watcher};
-use notify_debouncer_full::{new_debouncer, DebouncedEvent};
-use std::{future::Future, path::PathBuf, process::exit, sync::mpsc::channel, time::Duration};
+use notify::{EventKind, FsEventWatcher, RecursiveMode, Watcher};
+use notify_debouncer_full::{new_debouncer, DebouncedEvent, Debouncer, FileIdMap};
+use std::{path::PathBuf, sync::mpsc::Sender, time::Duration};
 use tokio::fs::create_dir_all;
 use tracing::error;
 
-use crate::Error;
+use crate::Error::{self, DirDoesNotExist, NotDirectory};
 
 pub struct FileWatcher {
     path: PathBuf,
-    kinds: Vec<EventKind>,
-    globset: GlobSet,
 }
 
 impl FileWatcher {
-    pub async fn new(path: PathBuf, kinds: Vec<EventKind>, globset: GlobSet) -> Self {
+    pub async fn new(path: PathBuf) -> Result<Self, Error> {
         if !path.exists() {
             if let Err(error) = create_dir_all(&path).await {
                 error!("Failed to create path: {}", error);
 
-                exit(1);
+                return Err(DirDoesNotExist(error));
             }
         }
 
         if path.is_file() {
             error!("The specified path is a file");
 
-            exit(1);
+            return Err(NotDirectory(format!(
+                "The specified path is a file: {:?}",
+                path
+            )));
         }
 
-        Self {
-            path,
-            kinds,
-            globset,
-        }
+        Ok(Self { path })
     }
 
-    pub async fn debouncer<F, Fut>(&self, f: F) -> Result<(), Error>
-    where
-        F: Fn(FileEvents) -> Fut,
-        Fut: Future<Output = Result<(), Error>>,
-    {
-        let (tx, rx) = channel();
-
-        let mut debouncer = new_debouncer(Duration::from_millis(1), None, tx)?;
+    pub async fn debouncer(
+        &self,
+        sender: Sender<Result<Vec<DebouncedEvent>, Vec<notify::Error>>>,
+    ) -> Result<Debouncer<FsEventWatcher, FileIdMap>, Error> {
+        let mut debouncer = new_debouncer(Duration::from_millis(1), None, sender)?;
 
         debouncer
             .watcher()
             .watch(&self.path, RecursiveMode::NonRecursive)?;
 
-        loop {
-            match rx.recv()? {
-                Ok(events) => {
-                    let mut events = FileEvents::new(events);
-                    events.filter(&self.kinds, &self.globset);
-
-                    if !events.is_empty() {
-                        f(events).await?;
-                    }
-                }
-                Err(e) => {
-                    error!("error: {:?}", e);
-                }
-            }
-        }
+        Ok(debouncer)
     }
 }
 
@@ -73,18 +53,17 @@ pub struct FileEvents {
 }
 
 impl FileEvents {
-    pub fn new(events: Vec<DebouncedEvent>) -> Self {
+    pub fn new(events: Vec<DebouncedEvent>, kinds: Vec<EventKind>, globset: GlobSet) -> Self {
+        let mut events = events;
+
+        events.retain(|event| {
+            kinds.contains(&event.kind) && event.paths.iter().any(|path| globset.is_match(path))
+        });
+
         Self { inner: events }
     }
 
     pub fn is_empty(&self) -> bool {
         self.inner.is_empty()
-    }
-
-    /// filter out events that are not of the specified type
-    pub fn filter(&mut self, kinds: &[EventKind], globset: &GlobSet) {
-        self.inner.retain(|event| {
-            kinds.contains(&event.kind) && event.paths.iter().any(|path| globset.is_match(path))
-        });
     }
 }
