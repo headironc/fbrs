@@ -43,7 +43,7 @@ impl FileWatcher {
             .watcher()
             .watch(&self.path, RecursiveMode::NonRecursive)?;
 
-        Ok(debouncer)
+        Ok::<Debouncer<FsEventWatcher, notify_debouncer_full::FileIdMap>, Error>(debouncer)
     }
 }
 
