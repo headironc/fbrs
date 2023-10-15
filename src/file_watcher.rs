@@ -135,6 +135,8 @@ mod tests {
                         .unwrap(),
                 );
 
+                println!("events: {:?}", events);
+
                 assert_eq!(events.len(), 1);
             }
             Ok(Err(errors)) => {
