@@ -3,7 +3,11 @@ use std::sync::mpsc::channel;
 use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
-use fbr_service::{config, filter_events, Error, FileWatcher};
+use fbr_service::{
+    config, filter_events,
+    Error::{self, MpscRecv, Notifies},
+    FileWatcher,
+};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -18,31 +22,42 @@ async fn main() -> Result<(), Error> {
 
     let (tx, rx) = channel();
 
-    let watch = tokio::spawn(async move { FileWatcher::new(listen_path).await?.debouncer(tx) });
+    // `let _debouncer`, avoid dropping the debouncer immediately, which will cause dropping the tx, and then the rx will be closed.
+    let _debouncer =
+        tokio::spawn(async move { FileWatcher::new(listen_path).await?.debouncer(tx) }).await??;
 
-    let handle = tokio::spawn(async move {
+    tokio::spawn(async move {
         loop {
-            match rx.recv() {
-                Ok(Ok(debounced_events)) => {
-                    let events = filter_events(
-                        debounced_events,
-                        vec![EventKind::Create(CreateKind::File)],
-                        globset.clone(),
-                    );
+            let res = match rx.recv() {
+                Ok(res) => res,
+                Err(e) => {
+                    error!("mpsc recv error: {}", e);
 
-                    info!("events: {:?}", events);
+                    break Err::<(), Error>(MpscRecv(e));
                 }
-                Ok(Err(errors)) => {
-                    error!("notify error: {:?}", errors);
+            };
+
+            let debounced_events = match res {
+                Ok(debounced_events) => debounced_events,
+                Err(errors) => {
+                    error!("notify errors: {:?}", errors);
+
+                    break Err(Notifies(errors));
                 }
-                Err(error) => {
-                    error!("mpsc recv error: {:?}", error);
-                }
+            };
+
+            let events = filter_events(
+                debounced_events,
+                vec![EventKind::Create(CreateKind::File)],
+                globset.clone(),
+            );
+
+            if !events.is_empty() {
+                info!("events: {:?}", events);
             }
         }
-    });
-
-    let _ = tokio::join!(watch, handle);
+    })
+    .await??;
 
     Ok(())
 }
