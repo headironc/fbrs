@@ -3,7 +3,7 @@ use std::sync::mpsc::channel;
 use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
-use fbr_service::{config, Error, FileEvents, FileWatcher};
+use fbr_service::{config, filter_events, Error, FileWatcher};
 
 #[tokio::main]
 async fn main() -> Result<(), Error> {
@@ -25,9 +25,9 @@ async fn main() -> Result<(), Error> {
         loop {
             match rx.recv() {
                 Ok(Ok(debounced_events)) => {
-                    let events = FileEvents::new(
+                    let events = filter_events(
                         debounced_events,
-                        vec![EventKind::Create(CreateKind::Any)],
+                        vec![EventKind::Create(CreateKind::File)],
                         globset.clone(),
                     );
 

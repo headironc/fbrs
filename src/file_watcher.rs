@@ -47,23 +47,102 @@ impl FileWatcher {
     }
 }
 
-#[derive(Debug, Clone)]
-pub struct FileEvents {
-    inner: Vec<DebouncedEvent>,
+pub fn filter_events(
+    events: Vec<DebouncedEvent>,
+    kinds: Vec<EventKind>,
+    globset: GlobSet,
+) -> Vec<DebouncedEvent> {
+    let mut events = events;
+
+    events.retain(|event| {
+        kinds.contains(&event.kind) && event.paths.iter().any(|path| globset.is_match(path))
+    });
+
+    events
 }
 
-impl FileEvents {
-    pub fn new(events: Vec<DebouncedEvent>, kinds: Vec<EventKind>, globset: GlobSet) -> Self {
-        let mut events = events;
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use globset::{Glob, GlobSetBuilder};
+    use notify::{event::CreateKind, Event};
+    use std::{sync::mpsc::channel, time::Instant};
 
-        events.retain(|event| {
-            kinds.contains(&event.kind) && event.paths.iter().any(|path| globset.is_match(path))
-        });
+    #[test]
+    fn test_filter_events() {
+        fn create_event(kind: EventKind, path: &str) -> DebouncedEvent {
+            DebouncedEvent::new(Event::new(kind).add_path(path.into()), Instant::now())
+        }
 
-        Self { inner: events }
+        let events = vec![
+            create_event(EventKind::Create(CreateKind::File), "foo.txt"),
+            create_event(EventKind::Create(CreateKind::Folder), "text.txt"),
+            create_event(EventKind::Create(CreateKind::File), "bar.json"),
+        ];
+
+        let mut builder = GlobSetBuilder::new();
+        builder.add(Glob::new("*.txt").unwrap());
+        let globset = builder.build().unwrap();
+
+        let events = filter_events(events, vec![EventKind::Create(CreateKind::File)], globset);
+
+        assert_eq!(events.len(), 1);
     }
 
-    pub fn is_empty(&self) -> bool {
-        self.inner.is_empty()
+    #[test]
+    fn test_filter_events_no_match() {
+        fn create_event(kind: EventKind, path: &str) -> DebouncedEvent {
+            DebouncedEvent::new(Event::new(kind).add_path(path.into()), Instant::now())
+        }
+
+        let events = vec![
+            create_event(EventKind::Create(CreateKind::File), "foo.txt"),
+            create_event(EventKind::Create(CreateKind::Folder), "text.txt"),
+            create_event(EventKind::Create(CreateKind::Other), "bar.json"),
+        ];
+
+        let mut builder = GlobSetBuilder::new();
+        builder.add(Glob::new("*.json").unwrap());
+        let globset = builder.build().unwrap();
+
+        let events = filter_events(events, vec![EventKind::Create(CreateKind::File)], globset);
+
+        assert_eq!(events.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_file_watcher() {
+        let path = PathBuf::from("test_file_watcher");
+
+        std::fs::create_dir_all(&path).unwrap();
+
+        let file_watcher = FileWatcher::new(path.clone()).await.unwrap();
+
+        let (tx, rx) = channel();
+
+        let _debouncer = file_watcher.debouncer(tx).await.unwrap();
+
+        std::fs::write(path.join("foo.txt"), "foo").unwrap();
+
+        match rx.recv() {
+            Ok(Ok(debounced_events)) => {
+                let events = filter_events(
+                    debounced_events,
+                    vec![EventKind::Create(CreateKind::File)],
+                    GlobSetBuilder::new()
+                        .add(Glob::new("*.txt").unwrap())
+                        .build()
+                        .unwrap(),
+                );
+
+                assert_eq!(events.len(), 1);
+            }
+            Ok(Err(errors)) => {
+                error!("notify error: {:?}", errors);
+            }
+            Err(error) => {
+                error!("mpsc recv error: {:?}", error);
+            }
+        }
     }
 }
