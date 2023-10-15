@@ -1,31 +1,63 @@
 use notify::{event::CreateKind, EventKind};
-use std::error::Error;
-use tracing::info;
+use std::sync::mpsc::channel;
+use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
-use fbr_service::{get_or_init_config, FileWatcher};
+use fbr_service::{
+    config, filter_events,
+    Error::{self, MpscRecv, Notifies},
+    FileWatcher,
+};
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn Error>> {
+async fn main() -> Result<(), Error> {
     registry()
         .with(EnvFilter::try_from_default_env().map_or("info".into(), |env| env))
         .with(fmt::layer())
         .init();
 
-    let config = get_or_init_config().await;
+    let config = config().await;
+    let listen_path = config.listen_path().to_owned();
+    let globset = config.globset().to_owned();
 
-    FileWatcher::new(
-        config.listen_path().clone(),
-        vec![EventKind::Create(CreateKind::File)],
-        config.globset().clone(),
-    )
-    .await
-    .debouncer(|events| async move {
-        info!("events: {:#?}", events);
+    let (tx, rx) = channel();
 
-        Ok(())
+    // `let _debouncer`, avoid dropping the debouncer immediately, which will cause dropping the tx, and then the rx will be closed.
+    let _debouncer =
+        tokio::spawn(async move { FileWatcher::new(listen_path).await?.debouncer(tx) }).await??;
+
+    tokio::spawn(async move {
+        loop {
+            let res = match rx.recv() {
+                Ok(res) => res,
+                Err(e) => {
+                    error!("mpsc recv error: {}", e);
+
+                    break Err::<(), Error>(MpscRecv(e));
+                }
+            };
+
+            let debounced_events = match res {
+                Ok(debounced_events) => debounced_events,
+                Err(errors) => {
+                    error!("notify errors: {:?}", errors);
+
+                    break Err(Notifies(errors));
+                }
+            };
+
+            let events = filter_events(
+                debounced_events,
+                vec![EventKind::Create(CreateKind::File)],
+                globset.clone(),
+            );
+
+            if !events.is_empty() {
+                info!("events: {:?}", events);
+            }
+        }
     })
-    .await?;
+    .await??;
 
     Ok(())
 }
