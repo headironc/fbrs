@@ -128,7 +128,7 @@ mod tests {
             Ok(Ok(debounced_events)) => {
                 let events = filter_events(
                     debounced_events,
-                    vec![EventKind::Create(CreateKind::File)],
+                    vec![EventKind::Create(CreateKind::Any)],
                     GlobSetBuilder::new()
                         .add(Glob::new("*.txt").unwrap())
                         .build()
