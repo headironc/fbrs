@@ -1,5 +1,5 @@
 use globset::GlobSet;
-use notify::{EventKind, FsEventWatcher, RecursiveMode, Watcher};
+use notify::{EventKind, RecommendedWatcher, RecursiveMode, Watcher};
 use notify_debouncer_full::{new_debouncer, DebouncedEvent, Debouncer, FileIdMap};
 use std::{path::PathBuf, sync::mpsc::Sender, time::Duration};
 use tokio::fs::create_dir_all;
@@ -36,7 +36,7 @@ impl FileWatcher {
     pub async fn debouncer(
         &self,
         sender: Sender<Result<Vec<DebouncedEvent>, Vec<notify::Error>>>,
-    ) -> Result<Debouncer<FsEventWatcher, FileIdMap>, Error> {
+    ) -> Result<Debouncer<RecommendedWatcher, FileIdMap>, Error> {
         let mut debouncer = new_debouncer(Duration::from_millis(1), None, sender)?;
 
         debouncer
