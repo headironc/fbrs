@@ -126,16 +126,19 @@ mod tests {
 
         match rx.recv() {
             Ok(Ok(debounced_events)) => {
+                println!("events: {:?}", debounced_events);
+
                 let events = filter_events(
                     debounced_events,
-                    vec![EventKind::Create(CreateKind::Any)],
+                    vec![
+                        EventKind::Create(CreateKind::Any),
+                        EventKind::Create(CreateKind::File),
+                    ],
                     GlobSetBuilder::new()
                         .add(Glob::new("*.txt").unwrap())
                         .build()
                         .unwrap(),
                 );
-
-                println!("events: {:?}", events);
 
                 assert_eq!(events.len(), 1);
             }
