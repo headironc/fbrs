@@ -33,7 +33,7 @@ impl FileWatcher {
         Ok(Self { path })
     }
 
-    pub async fn debouncer(
+    pub fn debouncer(
         &self,
         sender: Sender<Result<Vec<DebouncedEvent>, Vec<notify::Error>>>,
     ) -> Result<Debouncer<RecommendedWatcher, FileIdMap>, Error> {
@@ -120,7 +120,7 @@ mod tests {
 
         let (tx, rx) = channel();
 
-        let _debouncer = file_watcher.debouncer(tx).await.unwrap();
+        let _debouncer = file_watcher.debouncer(tx).unwrap();
 
         std::fs::write(path.join("foo.txt"), "foo").unwrap();
 

@@ -18,8 +18,7 @@ async fn main() -> Result<(), Error> {
 
     let (tx, rx) = channel();
 
-    let watch =
-        tokio::spawn(async move { FileWatcher::new(listen_path).await?.debouncer(tx).await });
+    let watch = tokio::spawn(async move { FileWatcher::new(listen_path).await?.debouncer(tx) });
 
     let handle = tokio::spawn(async move {
         loop {
