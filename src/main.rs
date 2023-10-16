@@ -1,5 +1,6 @@
+use globset::GlobSet;
 use notify::{event::CreateKind, EventKind};
-use std::sync::mpsc::channel;
+use std::{path::PathBuf, sync::mpsc::channel};
 use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
@@ -20,6 +21,12 @@ async fn main() -> Result<(), Error> {
     let listen_path = config.listen_path().to_owned();
     let globset = config.globset().to_owned();
 
+    listen(listen_path, globset).await?;
+
+    Ok(())
+}
+
+async fn listen(listen_path: PathBuf, globset: GlobSet) -> Result<(), Error> {
     let (tx, rx) = channel();
 
     // `let _debouncer`, avoid dropping the debouncer immediately, which will cause dropping the tx, and then the rx will be closed.
