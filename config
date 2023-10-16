@@ -1,0 +1,10 @@
+# MacOs or Linux
+LISTEN_PATH=/Users/headiron/Desktop/listen
+PROCESSOR_DIR_PATH=/Users/headiron/Desktop/processor
+# 白名单需要以,分隔
+WHITELIST=*.json
+
+# Windows
+# LISTEN_PATH='C:/Users/headiron/Desktop/listen'
+# PROCESSOR_DIR_PATH='C:/Users/headiron/Desktop/processor'
+# WHITELIST='*.json'
