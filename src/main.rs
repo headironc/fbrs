@@ -48,7 +48,11 @@ async fn main() -> Result<(), Error> {
 
             let events = filter_events(
                 debounced_events,
-                vec![EventKind::Create(CreateKind::File)],
+                vec![
+                    EventKind::Create(CreateKind::File),
+                    // * CreateKind::Any for windows
+                    EventKind::Create(CreateKind::Any),
+                ],
                 globset.clone(),
             );
 
