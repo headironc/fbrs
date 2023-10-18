@@ -5,7 +5,7 @@ use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
 use fbr_service::{
-    config, filter_events,
+    filter_events, Config,
     Error::{self, MpscRecv, Notifies},
     FileWatcher,
 };
@@ -17,7 +17,7 @@ async fn main() -> Result<(), Error> {
         .with(fmt::layer())
         .init();
 
-    let config = config().await;
+    let config = Config::instance().await;
     let listen_path = config.listen_path().to_owned();
     let globset = config.globset().to_owned();
 
