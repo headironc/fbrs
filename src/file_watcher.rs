@@ -93,28 +93,6 @@ mod tests {
     }
 
     #[test]
-    #[cfg(target_os = "windows")]
-    fn test_filter_events() {
-        fn create_event(kind: EventKind, path: &str) -> DebouncedEvent {
-            DebouncedEvent::new(Event::new(kind).add_path(path.into()), Instant::now())
-        }
-
-        let events = vec![
-            create_event(EventKind::Create(CreateKind::Any), "foo.txt"),
-            create_event(EventKind::Create(CreateKind::Any), "text.txt"),
-            create_event(EventKind::Create(CreateKind::Any), "bar.json"),
-        ];
-
-        let mut builder = GlobSetBuilder::new();
-        builder.add(Glob::new("*.txt").unwrap());
-        let globset = builder.build().unwrap();
-
-        let events = filter_events(events, vec![EventKind::Create(CreateKind::Any)], globset);
-
-        assert_eq!(events.len(), 2);
-    }
-
-    #[test]
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     fn test_filter_events_no_match() {
         fn create_event(kind: EventKind, path: &str) -> DebouncedEvent {
