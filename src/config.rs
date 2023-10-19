@@ -175,7 +175,7 @@ mod tests {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     use std::env::current_dir;
     #[cfg(any(target_os = "linux", target_os = "macos"))]
-    use tokio::fs::{remove_file, write};
+    use tokio::fs::write;
 
     // Only used in linux os or mac os
     #[cfg(any(target_os = "linux", target_os = "macos"))]
@@ -200,14 +200,6 @@ mod tests {
         write(&config_path, config).await.unwrap();
     }
 
-    async fn remove_test_config_file() {
-        let current_dir = current_dir().unwrap();
-
-        let config_path = current_dir.join("test_config.env");
-
-        remove_file(config_path).await.unwrap();
-    }
-
     #[tokio::test]
     #[cfg(any(target_os = "linux", target_os = "macos",))]
     async fn test_config() {
@@ -228,7 +220,5 @@ mod tests {
         );
 
         assert_eq!(config.globset().len(), 1);
-
-        remove_test_config_file().await;
     }
 }
