@@ -65,8 +65,11 @@ pub fn filter_events(
 mod tests {
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     use super::*;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use globset::{Glob, GlobSetBuilder};
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use notify::{event::CreateKind, Event};
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use std::{sync::mpsc::channel, time::Instant};
 
     #[test]
