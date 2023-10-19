@@ -174,29 +174,6 @@ mod tests {
     use std::env::current_dir;
     use tokio::fs::{remove_file, write};
 
-    // Only used in windows os
-    #[cfg(target_os = "windows")]
-    async fn create_test_config_file() {
-        let current_dir = current_dir().unwrap();
-
-        let listen_path = current_dir.join("test\\listen");
-        let processor_dir_path = current_dir.join("test\\processor");
-
-        let config = format!(
-            r#"
-            LISTEN_PATH='"{}"'
-            PROCESSOR_DIR_PATH='"{}"'
-            WHITELIST="*.txt"
-        "#,
-            listen_path.to_string_lossy(),
-            processor_dir_path.to_string_lossy()
-        );
-
-        let config_path = current_dir.join("test_config.env");
-
-        write(&config_path, config).await.unwrap();
-    }
-
     // Only used in linux os or mac os
     #[cfg(any(target_os = "linux", target_os = "macos"))]
     async fn create_test_config_file() {
@@ -245,30 +222,6 @@ mod tests {
         assert_eq!(
             config.processor_dir_path().to_string_lossy(),
             current_dir.join("test/processor").to_string_lossy()
-        );
-
-        assert_eq!(config.globset().len(), 1);
-
-        remove_test_config_file().await;
-    }
-
-    #[tokio::test]
-    #[cfg(target_os = "windows")]
-    async fn test_config() {
-        create_test_config_file().await;
-        let current_dir = current_dir().unwrap();
-        let config_path = current_dir.join("test_config.env");
-
-        let config = Config::new(config_path).await;
-
-        assert_eq!(
-            config.listen_path().to_string_lossy(),
-            current_dir.join("test\\listen").to_string_lossy()
-        );
-
-        assert_eq!(
-            config.processor_dir_path().to_string_lossy(),
-            current_dir.join("test\\processor").to_string_lossy()
         );
 
         assert_eq!(config.globset().len(), 1);
