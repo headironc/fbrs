@@ -176,7 +176,7 @@ mod tests {
     #[tokio::test]
     #[cfg(target_os = "windows")]
     async fn test_file_watcher() {
-        let path = PathBuf::from("./test_file_watcher");
+        let path = PathBuf::from(".\\test_file_watcher");
 
         std::fs::create_dir_all(&path).unwrap();
 
