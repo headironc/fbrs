@@ -33,23 +33,27 @@ static CONFIG: Lazy<OnceCell<Config>> = Lazy::new(OnceCell::new);
 impl Config {
     /// Get the config instance
     pub async fn instance() -> &'static Self {
-        CONFIG.get_or_init(Self::new).await
+        CONFIG
+            .get_or_init(|| {
+                let args = Args::parse();
+
+                // check if the specified path exists
+                if !args.validate() {
+                    error!("The specified config file does not exist");
+
+                    exit(1);
+                }
+
+                Self::new(args.config)
+            })
+            .await
     }
 
-    async fn new() -> Self {
-        let args = Args::parse();
-
-        // check if the specified path exists
-        if !args.validate() {
-            error!("The specified config file does not exist");
-
-            exit(1);
-        }
-
+    async fn new(config: PathBuf) -> Self {
         info!("Reading config file...");
 
         // load the config file
-        from_filename(&args.config).ok();
+        from_filename(&config).ok();
 
         let listen_path = Self::get_path_from_env("LISTEN_PATH").await;
 
@@ -164,88 +168,111 @@ impl Config {
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use super::*;
-//     use std::env::current_dir;
-//     use tokio::fs::{remove_file, write};
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::env::current_dir;
+    use tokio::fs::{remove_file, write};
 
-//     // Only used in windows os
-//     #[cfg(target_os = "windows")]
-//     async fn create_test_config_file() {
-//         let current_dir = current_dir().unwrap();
+    // Only used in windows os
+    #[cfg(target_os = "windows")]
+    async fn create_test_config_file() {
+        let current_dir = current_dir().unwrap();
 
-//         let listen_path = current_dir.join("test\\listen");
-//         let processor_dir_path = current_dir.join("test\\processor");
+        let listen_path = current_dir.join("test\\listen");
+        let processor_dir_path = current_dir.join("test\\processor");
 
-//         let config = format!(
-//             r#"
-//             LISTEN_PATH = "{}"
-//             PROCESSOR_DIR_PATH = "{}"
-//             WHITELIST = "*.txt"
-//         "#,
-//             listen_path.to_string_lossy(),
-//             processor_dir_path.to_string_lossy()
-//         );
+        let config = format!(
+            r#"
+            LISTEN_PATH = "{}"
+            PROCESSOR_DIR_PATH = "{}"
+            WHITELIST = "*.txt"
+        "#,
+            listen_path.to_string_lossy(),
+            processor_dir_path.to_string_lossy()
+        );
 
-//         let config_path = current_dir.join("test_config.env");
+        let config_path = current_dir.join("test_config.env");
 
-//         write(&config_path, config).await.unwrap();
-//     }
+        write(&config_path, config).await.unwrap();
+    }
 
-//     // Only used in linux os or mac os
-//     #[cfg(any(target_os = "linux", target_os = "macos"))]
-//     async fn create_test_config_file() {
-//         let current_dir = current_dir().unwrap();
+    // Only used in linux os or mac os
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    async fn create_test_config_file() {
+        let current_dir = current_dir().unwrap();
 
-//         let listen_path = current_dir.join("test/listen");
-//         let processor_dir_path = current_dir.join("test/processor");
+        let listen_path = current_dir.join("test/listen");
+        let processor_dir_path = current_dir.join("test/processor");
 
-//         let config = format!(
-//             r#"
-//             LISTEN_PATH = "{}"
-//             PROCESSOR_DIR_PATH = "{}"
-//             WHITELIST = "*.txt"
-//         "#,
-//             listen_path.to_string_lossy(),
-//             processor_dir_path.to_string_lossy()
-//         );
+        let config = format!(
+            r#"
+            LISTEN_PATH = "{}"
+            PROCESSOR_DIR_PATH = "{}"
+            WHITELIST = "*.txt"
+        "#,
+            listen_path.to_string_lossy(),
+            processor_dir_path.to_string_lossy()
+        );
 
-//         let config_path = current_dir.join("test_config.env");
+        let config_path = current_dir.join("test_config.env");
 
-//         write(&config_path, config).await.unwrap();
-//     }
+        write(&config_path, config).await.unwrap();
+    }
 
-//     async fn remove_test_config_file() {
-//         let current_dir = current_dir().unwrap();
+    async fn remove_test_config_file() {
+        let current_dir = current_dir().unwrap();
 
-//         let config_path = current_dir.join("test_config.env");
+        let config_path = current_dir.join("test_config.env");
 
-//         remove_file(config_path).await.unwrap();
-//     }
+        remove_file(config_path).await.unwrap();
+    }
 
-//     #[tokio::test]
-//     #[cfg(any(target_os = "linux", target_os = "macos",))]
-//     async fn test_config() {
-//         create_test_config_file().await;
+    #[tokio::test]
+    #[cfg(any(target_os = "linux", target_os = "macos",))]
+    async fn test_config() {
+        create_test_config_file().await;
+        let current_dir = current_dir().unwrap();
+        let config_path = current_dir.join("test_config.env");
 
-//         let config = Config::new().await;
+        let config = Config::new(config_path).await;
 
-//         assert_eq!(
-//             config.listen_path().to_string_lossy(),
-//             current_dir().unwrap().join("test/listen").to_string_lossy()
-//         );
+        assert_eq!(
+            config.listen_path().to_string_lossy(),
+            current_dir.join("test/listen").to_string_lossy()
+        );
 
-//         assert_eq!(
-//             config.processor_dir_path().to_string_lossy(),
-//             current_dir()
-//                 .unwrap()
-//                 .join("test/processor")
-//                 .to_string_lossy()
-//         );
+        assert_eq!(
+            config.processor_dir_path().to_string_lossy(),
+            current_dir.join("test/processor").to_string_lossy()
+        );
 
-//         assert_eq!(config.globset().len(), 1);
+        assert_eq!(config.globset().len(), 1);
 
-//         remove_test_config_file().await;
-//     }
-// }
+        remove_test_config_file().await;
+    }
+
+    #[tokio::test]
+    #[cfg(target_os = "windows")]
+    async fn test_config() {
+        create_test_config_file().await;
+        let current_dir = current_dir().unwrap();
+        let config_path = current_dir.join("test_config.env");
+
+        let config = Config::new(config_path).await;
+
+        assert_eq!(
+            config.listen_path().to_string_lossy(),
+            current_dir.join("test\\listen").to_string_lossy()
+        );
+
+        assert_eq!(
+            config.processor_dir_path().to_string_lossy(),
+            current_dir.join("test\\processor").to_string_lossy()
+        );
+
+        assert_eq!(config.globset().len(), 1);
+
+        remove_test_config_file().await;
+    }
+}
