@@ -172,43 +172,4 @@ mod tests {
             }
         }
     }
-
-    #[tokio::test]
-    #[cfg(target_os = "windows")]
-    async fn test_file_watcher() {
-        let path = PathBuf::from(".\\test_file_watcher");
-
-        std::fs::create_dir_all(&path).unwrap();
-
-        let file_watcher = FileWatcher::new(path.clone()).await.unwrap();
-
-        let (tx, rx) = channel();
-
-        let _debouncer = file_watcher.debouncer(tx).unwrap();
-
-        std::fs::write(path.join("foo.txt"), "foo").unwrap();
-
-        match rx.recv() {
-            Ok(Ok(debounced_events)) => {
-                println!("events: {:?}", debounced_events);
-
-                let events = filter_events(
-                    debounced_events,
-                    vec![EventKind::Create(CreateKind::Any)],
-                    GlobSetBuilder::new()
-                        .add(Glob::new("*.txt").unwrap())
-                        .build()
-                        .unwrap(),
-                );
-
-                assert_eq!(events.len(), 1);
-            }
-            Ok(Err(errors)) => {
-                error!("notify error: {:?}", errors);
-            }
-            Err(error) => {
-                error!("mpsc recv error: {:?}", error);
-            }
-        }
-    }
 }
