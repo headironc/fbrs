@@ -66,7 +66,9 @@ mod tests {
     use super::*;
     use globset::{Glob, GlobSetBuilder};
     use notify::{event::CreateKind, Event};
-    use std::{sync::mpsc::channel, time::Instant};
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
+    use std::sync::mpsc::channel;
+    use std::time::Instant;
 
     #[test]
     #[cfg(any(target_os = "linux", target_os = "macos"))]
