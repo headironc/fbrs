@@ -184,9 +184,9 @@ mod tests {
 
         let config = format!(
             r#"
-            LISTEN_PATH = "{}"
-            PROCESSOR_DIR_PATH = "{}"
-            WHITELIST = "*.txt"
+            LISTEN_PATH='"{}"'
+            PROCESSOR_DIR_PATH='"{}"'
+            WHITELIST="*.txt"
         "#,
             listen_path.to_string_lossy(),
             processor_dir_path.to_string_lossy()
@@ -207,9 +207,9 @@ mod tests {
 
         let config = format!(
             r#"
-            LISTEN_PATH = "{}"
-            PROCESSOR_DIR_PATH = "{}"
-            WHITELIST = "*.txt"
+            LISTEN_PATH="{}"
+            PROCESSOR_DIR_PATH="{}"
+            WHITELIST="*.txt"
         "#,
             listen_path.to_string_lossy(),
             processor_dir_path.to_string_lossy()
