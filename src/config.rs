@@ -170,8 +170,11 @@ impl Config {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use super::*;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use std::env::current_dir;
+    #[cfg(any(target_os = "linux", target_os = "macos"))]
     use tokio::fs::{remove_file, write};
 
     // Only used in linux os or mac os
