@@ -107,7 +107,7 @@ mod tests {
         builder.add(Glob::new("*.txt").unwrap());
         let globset = builder.build().unwrap();
 
-        let events = filter_events(events, vec![EventKind::Create(CreateKind::File)], globset);
+        let events = filter_events(events, vec![EventKind::Create(CreateKind::Any)], globset);
 
         assert_eq!(events.len(), 2);
     }
