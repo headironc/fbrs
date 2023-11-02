@@ -5,7 +5,7 @@ use std::{path::PathBuf, sync::mpsc::Sender, time::Duration};
 use tokio::fs::create_dir_all;
 use tracing::error;
 
-use crate::Error::{self, DirDoesNotExist, NotDirectory};
+use crate::error::Error::{self, DirDoesNotExist, NotDirectory};
 
 pub struct FileWatcher {
     path: PathBuf,

@@ -1,13 +1,19 @@
 use globset::GlobSet;
 use notify::{event::CreateKind, EventKind};
-use std::{path::PathBuf, sync::mpsc::channel};
+use std::{
+    collections::HashMap,
+    path::PathBuf,
+    sync::{mpsc::channel, Arc},
+};
+use tokio::{fs::File, io::AsyncReadExt};
 use tracing::{error, info};
 use tracing_subscriber::{fmt, prelude::*, registry, EnvFilter};
 
 use fbr_service::{
-    filter_events, Config,
-    Error::{self, MpscRecv, Notifies},
-    FileWatcher,
+    config::Config,
+    error::Error::{self, MpscRecv, Notifies},
+    file_watcher::{filter_events, FileWatcher},
+    processor::{IOBuilder, NetworkIOProcessor, Process, Processors},
 };
 
 #[tokio::main]
@@ -21,12 +27,24 @@ async fn main() -> Result<(), Error> {
     let listen_path = config.listen_path().to_owned();
     let globset = config.globset().to_owned();
 
-    listen(listen_path, globset).await?;
+    let network_io_processor = NetworkIOProcessor::default();
+
+    let mut map: HashMap<_, Box<dyn Process>> = HashMap::new();
+
+    map.insert("com.proxy.network.io", Box::new(network_io_processor));
+
+    let processors = Arc::new(Processors::new(map));
+
+    listen(listen_path, globset, Arc::clone(&processors)).await?;
 
     Ok(())
 }
 
-async fn listen(listen_path: PathBuf, globset: GlobSet) -> Result<(), Error> {
+async fn listen(
+    listen_path: PathBuf,
+    globset: GlobSet,
+    processors: Arc<Processors>,
+) -> Result<(), Error> {
     let (tx, rx) = channel();
 
     // `let _debouncer`, avoid dropping the debouncer immediately, which will cause dropping the tx, and then the rx will be closed.
@@ -53,18 +71,51 @@ async fn listen(listen_path: PathBuf, globset: GlobSet) -> Result<(), Error> {
                 }
             };
 
+            #[cfg(target_os = "windows")]
             let events = filter_events(
                 debounced_events,
                 vec![
-                    EventKind::Create(CreateKind::File),
                     // * CreateKind::Any for windows
                     EventKind::Create(CreateKind::Any),
                 ],
                 globset.clone(),
             );
 
-            if !events.is_empty() {
-                info!("events: {:?}", events);
+            #[cfg(any(target_os = "linux", target_os = "macos"))]
+            let events = filter_events(
+                debounced_events,
+                vec![EventKind::Create(CreateKind::File)],
+                globset.clone(),
+            );
+
+            let paths = events
+                .into_iter()
+                .flat_map(|event| event.event.paths)
+                .collect::<Vec<_>>();
+
+            if !paths.is_empty() {
+                for path in paths {
+                    info!("path: {:?}", path);
+
+                    let mut file = File::open(path).await?;
+
+                    let mut buffer = Vec::new();
+
+                    file.read_to_end(&mut buffer).await?;
+
+                    let io_builder = match IOBuilder::new(&buffer) {
+                        Ok(io_builder) => io_builder,
+                        Err(e) => {
+                            error!("parse json error: {}", e);
+
+                            continue;
+                        }
+                    };
+
+                    let io = io_builder.build()?;
+
+                    processors.process(io).await?;
+                }
             }
         }
     })
